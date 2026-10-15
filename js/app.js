@@ -465,12 +465,13 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 /* ---------- service worker: offline cache + update prompt ---------- */
 function registerSW(){
   if (!("serviceWorker" in navigator)) return;
-  let reloading = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloading){ reloading = true; location.reload(); } });
+  /* Reload only after the user accepts an update; the first install also fires controllerchange (clients.claim). */
+  let updating = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (updating){ updating = false; location.reload(); } });
   navigator.serviceWorker.register("sw.js").then(reg => {
     const offer = w => {
       $("toast").hidden = false;
-      $("toastBtn").onclick = () => { $("toastBtn").disabled = true; w.postMessage("skipWaiting"); };
+      $("toastBtn").onclick = () => { $("toastBtn").disabled = true; updating = true; w.postMessage("skipWaiting"); };
     };
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener("updatefound", () => {
