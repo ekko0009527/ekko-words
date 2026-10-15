@@ -136,3 +136,53 @@ svg{display:block}
   display:flex;align-items:center;gap:12px;padding:8px 8px 8px 16px;border-radius:999px;background:var(--btn-strong);color:var(--btn-strong-fg);
   box-shadow:var(--shadow);font:700 14px var(--f-body);white-space:nowrap}
 .toast button{border:0;border-radius:999px;padding:8px 14px;background:var(--good);color:#fff;font:800 14px var(--f-body)}
+
+/* study view: back to home */
+.lead{justify-self:start;display:flex;align-items:center;gap:2px;margin-left:-8px}
+.icon-btn.back svg{width:24px;height:24px}
+.lead .streak{white-space:nowrap}
+
+/* memory cue on the card art, shown with the answer */
+.art .emo{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  font:400 clamp(56px,16vh,96px)/1 "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
+  letter-spacing:.06em;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));animation:pop .28s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(.85)}}
+@media (prefers-reduced-motion:reduce){.art .emo{animation:none}}
+
+/* home dashboard */
+.app[data-view="home"] .top,.app[data-view="home"] .keys{display:none}
+.home{display:flex;flex-direction:column;gap:12px;padding-top:12px}
+.home-head{display:flex;align-items:center;gap:10px}
+.home-title{flex:1;min-width:0;display:flex;flex-direction:column}
+.home-title h1{margin:0;font:900 26px/1.15 var(--f-display);white-space:nowrap}
+.home-title span{font:500 13px var(--f-body);color:var(--muted)}
+.goal{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 12px 0 9px;border-radius:12px;background:var(--surface);
+  border:1.5px solid var(--line);font:800 15px var(--f-display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.goal .sep{width:1px;height:16px;background:var(--line)}
+.ring{width:18px;height:18px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke:var(--chip);stroke-width:3.2}
+.ring circle.on{stroke:var(--good);stroke-linecap:round}
+.home-head .icon-btn{margin-right:-8px}
+.home-sub{margin:-4px 0 0;font:500 13px/1.5 var(--f-body);color:var(--muted)}
+.week-head{display:flex;justify-content:space-between;font:700 13px var(--f-body);color:var(--muted);padding-top:4px}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));text-align:center}
+.wd{display:flex;flex-direction:column;align-items:center;gap:6px}
+.wd .dow{font:500 12px var(--f-body);color:var(--muted)}
+.wd .dt{position:relative;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font:800 16px var(--f-display);font-variant-numeric:tabular-nums}
+.wd.today .dt{background:var(--btn-strong);color:var(--btn-strong-fg)}
+.wd.future .dt{color:var(--muted);opacity:.55}
+.wd.studied .dt::after{content:"";position:absolute;bottom:-7px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--good)}
+.day-n{margin:8px 0 0;font:900 22px var(--f-display)}
+.today-card{padding:14px}
+.thumbs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px}
+.thumbs::-webkit-scrollbar{display:none}
+.thumb{flex:0 0 62px;border-radius:12px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
+.thumb canvas{display:block;width:100%;height:76px}
+.thumb span{display:block;padding:5px 3px;font:800 11px var(--f-display);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumb.fin{opacity:.4}
+.today-body{display:flex;flex-direction:column;gap:9px;padding:0 4px 2px}
+.today-body h3{margin:0;font:900 19px var(--f-body)}
+.bar{height:8px;border-radius:99px;background:var(--chip);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--good);transition:width .3s}
+.prog-row{display:flex;justify-content:space-between;font:500 13px var(--f-body);color:var(--muted)}
+.today-note{margin:2px 0 0;padding-top:10px;border-top:1px solid var(--line);font:500 14px var(--f-body);text-align:center}

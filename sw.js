@@ -1,7 +1,7 @@
 /* Service worker: precache the app and every audio clip at install, serve cache-first.
    VERSION is rewritten by tools/stamp_sw.py from a hash of the cached files, so any
    content change produces a new cache and the page shows an "update" prompt. */
-const VERSION = "8d9398619fe5";
+const VERSION = "a22a2f4004e5";
 const CACHE = "ekko-words-" + VERSION;
 const FONT_CACHE = "ekko-fonts";
 const SHELL = [

@@ -20,13 +20,14 @@ const LS_KEY = "ekko-words-v1";
 /* ---------- state ---------- */
 function todayNum(){ const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 864e5); }
 function defaultState(){
-  return {v:1, cards:{}, day:{d:0, nw:0, extra:0, done:[]}, streak:0, lastDone:-9, updatedAt:0,
+  return {v:1, cards:{}, day:{d:0, nw:0, extra:0, done:[]}, streak:0, lastDone:-9, updatedAt:0, log:{},
     settings:{perDay:15, deck:"all", accent:"en-US", auto:true}};
 }
 function normalize(s){
   const d = defaultState();
   if (!s || typeof s !== "object") return d;
-  return {...d, ...s, settings:{...d.settings, ...(s.settings || {})}, day:{...d.day, ...(s.day || {})}, cards:s.cards || {}};
+  return {...d, ...s, settings:{...d.settings, ...(s.settings || {})}, day:{...d.day, ...(s.day || {})}, cards:s.cards || {},
+    log: s.log && typeof s.log === "object" && !Array.isArray(s.log) ? s.log : {}};
 }
 let state = defaultState();
 
@@ -80,11 +81,15 @@ function parseBackup(text){
   else D.done = D.done.filter(id => typeof id === "string" && BY_ID[id]);
   if (!isInt(s.streak) || s.streak < 0) s.streak = 0;
   if (!isInt(s.lastDone)) s.lastDone = d.lastDone;
+  const log = {};
+  for (const [k, v] of Object.entries(s.log)) if (/^-?\d+$/.test(k) && isInt(v) && v >= 0) log[k] = v;
+  s.log = log;
   return {state:s, dropped, exportedAt: typeof data.exportedAt === "string" ? data.exportedAt : ""};
 }
 
 /* ---------- session ---------- */
-let queue = [], cur = null, revealed = false, interacted = false;
+/* view: "home" = dashboard, "study" = one card at a time */
+let queue = [], cur = null, revealed = false, interacted = false, view = "home";
 
 function rollDay(){ const t = todayNum(); if (state.day.d !== t) state.day = {d:t, nw:0, extra:0, done:[]}; }
 function deckList(){ const d = state.settings.deck; return d === "all" ? ORDER_ALL : CARDS.filter(c => c.deck === d); }
@@ -111,11 +116,15 @@ function next(){
   revealed = !!cur && cur.kind === "new";
   if (!cur) finishDay();
   render(true);
-  if (cur && state.settings.auto && interacted) sayWord(BY_ID[cur.id]);
+  if (cur && view === "study" && state.settings.auto && interacted) sayWord(BY_ID[cur.id]);
 }
 
 function reinsert(id, gap){ queue.splice(Math.min(gap, queue.length), 0, {id, kind:"review"}); }
-function markDone(id){ if (!state.day.done.includes(id)) state.day.done.push(id); }
+/* state.log[dayNum] = cards finished that day (feeds the week strip on the home screen) */
+function markDone(id){
+  if (!state.day.done.includes(id)) state.day.done.push(id);
+  state.log[state.day.d] = state.day.done.length;
+}
 
 function finishDay(){
   const t = state.day.d;
@@ -280,8 +289,10 @@ function renderCard(animate){
   const card = BY_ID[cur.id], s = state.cards[cur.id];
   const wrap = el("article", "card" + (animate ? " enter" : ""));
   const art = el("div", "art");
-  const cv = el("canvas"); cv.setAttribute("aria-hidden", "true");
+  const cv = el("canvas"); cv.setAttribute("aria-hidden", "true"); cv.dataset.id = card.id;
   art.append(cv, el("span", "tag", cur.kind === "new" ? "新字" : "複習"));
+  /* Memory cue: shown only with the answer, so review cards still test recall */
+  if (revealed && card.emoji){ const e = el("span", "emo", card.emoji); e.setAttribute("aria-hidden", "true"); art.append(e); }
   wrap.append(art);
 
   const body = el("div", "body");
@@ -348,13 +359,131 @@ function renderDone(){
   $("stage").replaceChildren(wrap);
 }
 
+/* ---------- home dashboard ---------- */
+const DOW = ["日", "一", "二", "三", "四", "五", "六"];
+const SEC_PER_CARD = 20; // rough guess behind the "約 n 分" estimate
+const dayDate = n => new Date(n * 864e5); // dayNum -> Date whose UTC fields are that local date
+
+/* Days with any finished card: state.log, plus today's list and the current streak run for progress saved before log existed */
+function studiedDays(){
+  const days = new Set(Object.keys(state.log).filter(k => state.log[k] > 0).map(Number));
+  if (state.day.done.length) days.add(state.day.d);
+  if (state.streak > 0) for (let d = state.lastDone - state.streak + 1; d <= state.lastDone; d++) days.add(d);
+  return days;
+}
+function today(){
+  const remaining = [], seen = new Set();
+  [cur, ...queue].forEach(q => { if (q && !seen.has(q.id)){ seen.add(q.id); remaining.push(q); } });
+  const done = state.day.done.filter(id => !seen.has(id));
+  return {remaining, done, total: remaining.length + done.length};
+}
+/* Day the last new word of the deck gets introduced at the current pace */
+function newWordsDone(){
+  const left = newLeft(), t = state.day.d, per = state.settings.perDay;
+  const allowToday = Math.max(0, per + state.day.extra - state.day.nw);
+  const after = Math.max(0, left - allowToday);
+  return {left, day: after === 0 ? t : t + Math.ceil(after / per)};
+}
+function ring(p){
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 20 20"); svg.setAttribute("aria-hidden", "true"); svg.classList.add("ring");
+  const len = 2 * Math.PI * 8;
+  svg.innerHTML = `<circle cx="10" cy="10" r="8"/><circle cx="10" cy="10" r="8" class="on" stroke-dasharray="${(p * len).toFixed(2)} ${len.toFixed(2)}"/>`;
+  return svg;
+}
+
+function renderHome(){
+  const t = state.day.d, list = deckList();
+  const seenN = list.filter(c => state.cards[c.id]).length, pct = list.length ? seenN / list.length : 0;
+  const home = el("div", "home");
+
+  const head = el("div", "home-head"), title = el("div", "home-title");
+  title.append(el("h1", null, "EKKO 字卡"), el("span", null, state.settings.deck === "all" ? "全部牌組" : DECK_NAME[state.settings.deck]));
+  const goal = el("div", "goal"), pctTxt = Math.round(pct * 1000) / 10 + "%";
+  const eta = newWordsDone(), dd = eta.day - t, date = dayDate(eta.day);
+  goal.append(ring(pct), el("b", null, pctTxt), el("span", "sep"), el("b", null, eta.left ? "D-" + dd : "完成"));
+  goal.title = `已看過 ${seenN} / ${list.length} 個字`;
+  const menu = button("icon-btn", null, openSheet);
+  menu.setAttribute("aria-label", "設定"); menu.innerHTML = $("menuBtn").innerHTML;
+  head.append(title, goal, menu);
+  const sub = el("p", "home-sub", eta.left
+    ? `照每天 ${state.settings.perDay} 個新字，預估 ${date.getUTCMonth() + 1}/${date.getUTCDate()} 學完這副牌的新字`
+    : "這副牌的新字都學過了，之後只剩複習");
+  home.append(head, sub);
+
+  const studied = studiedDays(), dow = dayDate(t).getUTCDay();
+  const alive = state.lastDone >= t - 1 ? state.streak : 0;
+  const weekHead = el("div", "week-head");
+  weekHead.append(el("span", null, "本週"), el("span", null, alive ? `連續 ${alive} 天` : "完成今天的份量就開始累積連續天數"));
+  const week = el("div", "week");
+  for (let i = 0; i < 7; i++){
+    const d = t - dow + i, dt = dayDate(d), cell = el("div", "wd");
+    if (d === t) cell.classList.add("today");
+    if (d > t) cell.classList.add("future");
+    if (studied.has(d)) cell.classList.add("studied");
+    cell.setAttribute("aria-label", `${dt.getUTCMonth() + 1}月${dt.getUTCDate()}日${d === t ? "，今天" : ""}${studied.has(d) ? "，有學習" : ""}`);
+    cell.append(el("span", "dow", DOW[i]), el("span", "dt", String(dt.getUTCDate())));
+    week.append(cell);
+  }
+  home.append(weekHead, week);
+
+  const T = today(), dayN = studied.size + (studied.has(t) ? 0 : 1);
+  home.append(el("h2", "day-n", `第 ${dayN} 天`));
+  const card = el("article", "card today-card");
+  if (T.total){
+    const thumbs = el("div", "thumbs"), draw = [];
+    [...T.remaining.map(q => q.id), ...T.done].slice(0, 8).forEach(id => {
+      const c = BY_ID[id], th = el("div", "thumb" + (T.done.includes(id) ? " fin" : ""));
+      const cv = el("canvas"); cv.setAttribute("aria-hidden", "true"); cv.dataset.id = id;
+      th.append(cv, el("span", null, c.word));
+      thumbs.append(th); draw.push([cv, c]);
+    });
+    requestAnimationFrame(() => draw.forEach(([cv, c]) => drawArt(cv, c)));
+    card.append(thumbs);
+  }
+  const body = el("div", "today-body");
+  const nNew = T.remaining.filter(q => q.kind === "new").length, nRev = T.remaining.length - nNew, doneN = T.done.length;
+  body.append(el("h3", null, "今日學習"));
+  const bar = el("div", "bar"), fill = el("i");
+  fill.style.width = (T.total ? doneN / T.total * 100 : 0) + "%";
+  bar.append(fill);
+  const row = el("div", "prog-row");
+  const status = !T.total ? "今天沒有排到卡片" : !T.remaining.length ? "今天完成" : doneN ? `進行中 ${doneN} / ${T.total}` : "尚未開始";
+  row.append(el("span", null, status), el("span", null, T.remaining.length ? `約 ${Math.max(1, Math.ceil(T.remaining.length * SEC_PER_CARD / 60))} 分` : ""));
+  body.append(bar, row);
+  if (T.remaining.length) body.append(el("p", "today-note", `新字 ${nNew} 個・複習 ${nRev} 個`));
+  card.append(body);
+  home.append(card);
+  $("stage").replaceChildren(home);
+}
+
+function learnMore(){ state.day.extra += 5; Store.save(); view = "study"; startSession(); }
+function startStudy(){
+  view = "study";
+  render(true);
+  if (cur && state.settings.auto && interacted) sayWord(BY_ID[cur.id]);
+}
+function goHome(){
+  if (player) try { player.pause(); } catch(e){}
+  view = "home";
+  render(false);
+}
+
 function renderActions(){
   const a = $("actions");
   a.replaceChildren();
+  if (view === "home"){
+    const T = today(), left = newLeft();
+    if (T.remaining.length) a.append(button("btn strong wide", T.done.length ? "繼續" : "立即開始", startStudy));
+    else if (left > 0) a.append(button("btn strong wide", `再學 ${Math.min(5, left)} 個新字`, learnMore));
+    else a.append(button("btn wide", "打開設定", openSheet));
+    return;
+  }
   if (!cur){
     const left = newLeft();
-    if (left > 0) a.append(button("btn strong wide", `再學 ${Math.min(5, left)} 個新字`, () => { state.day.extra += 5; Store.save(); startSession(); }));
-    else a.append(button("btn wide", "打開設定", openSheet));
+    a.append(button("btn", "回首頁", goHome));
+    if (left > 0) a.append(button("btn strong", `再學 ${Math.min(5, left)} 個新字`, learnMore));
+    else a.append(button("btn", "打開設定", openSheet));
     return;
   }
   if (cur.kind === "new"){
@@ -367,8 +496,10 @@ function renderActions(){
 }
 
 function render(animate){
+  $("app").dataset.view = view;
   renderTop();
-  if (cur) renderCard(animate); else renderDone();
+  if (view === "home") renderHome();
+  else if (cur) renderCard(animate); else renderDone();
   renderActions();
   $("stage").scrollTop = 0;
 }
@@ -445,12 +576,20 @@ $("menuBtn").addEventListener("click", openSheet);
 $("closeSheet").addEventListener("click", closeSheet);
 $("scrim").addEventListener("click", closeSheet);
 $("importFile").addEventListener("change", onImportFile);
+$("backBtn").addEventListener("click", goHome);
 
 /* ---------- input ---------- */
 document.addEventListener("pointerdown", () => { interacted = true; }, {capture:true});
 document.addEventListener("keydown", e => {
   interacted = true;
   if (!$("sheet").hidden){ if (e.key === "Escape") closeSheet(); return; }
+  if (view === "home"){
+    if ((e.key === " " || e.key === "Enter") && !(e.target && e.target.tagName === "BUTTON")){
+      e.preventDefault(); const b = $("actions").querySelector("button"); if (b) b.click();
+    }
+    return;
+  }
+  if (e.key === "Escape"){ goHome(); return; }
   if (!cur) return;
   if (e.target && e.target.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
   if (e.key === " " || e.key === "Enter"){ e.preventDefault(); if (cur.kind === "review" && !revealed) reveal(); }
@@ -459,7 +598,9 @@ document.addEventListener("keydown", e => {
   else if (e.key.toLowerCase() === "s"){ sayWord(BY_ID[cur.id]); }
 });
 let rz = 0;
-window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const cv = document.querySelector(".art canvas"); if (cv && cur){ drawArt(cv, BY_ID[cur.id]); fitWord(); } }, 150); });
+/* Canvases size themselves from layout, so redraw after resizes and once web fonts arrive */
+function redrawArt(){ document.querySelectorAll("canvas[data-id]").forEach(cv => drawArt(cv, BY_ID[cv.dataset.id])); if (view === "study" && cur) fitWord(); }
+window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(redrawArt, 150); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && CARDS.length && todayNum() !== state.day.d) startSession(); });
 
 /* ---------- service worker: offline cache + update prompt ---------- */
@@ -498,7 +639,7 @@ async function boot(){
   }
   state = Store.loadLocal() || defaultState();
   startSession();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { const cv = document.querySelector(".art canvas"); if (cv && cur){ drawArt(cv, BY_ID[cur.id]); fitWord(); } });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawArt);
 }
 boot();
 registerSW();
