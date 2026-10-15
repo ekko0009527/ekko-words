@@ -80,13 +80,18 @@ python -m http.server 8000
 python tools/stamp_sw.py
 ```
 
-這個腳本會依照檔案內容的雜湊值改寫 `sw.js` 裡的 `VERSION`。GitHub Actions 部署時也會自動跑一次，所以就算忘了也不會部署出舊快取。
+這個腳本會改寫 `sw.js` 裡的兩個地方：
+
+- `VERSION`：頁面本體（HTML、CSS、JS、`words.json`、manifest、圖示）的雜湊。只要有改，就會換一個新的頁面快取。
+- `AUDIO:BEGIN`～`AUDIO:END` 區塊：每個音檔各自的雜湊（12 位）。音檔放在一個長期保留的快取 `ekko-audio` 裡，每個檔案用自己的雜湊當版本，所以改版時只會下載新增或有變動的音檔；只改程式的話，完全不會重抓音檔。
+
+GitHub Actions 部署時也會自動跑一次，所以就算忘了也不會部署出舊快取。
 使用者下次打開 App 時，畫面下方會出現「有新版本」，按「更新」就會重新載入。
 
 ### 新增單字
 
 1. 在 `words.json` 加一筆資料，`deck` 只能填 `core`、`dev` 或 `algo`。
-2. 放入 `audio/<id>.mp3` 和 `audio/<id>-ex.mp3`。**兩個音檔都要有**，否則安裝時快取會失敗，離線功能也會跟著失效。
+2. 放入 `audio/<id>.mp3` 和 `audio/<id>-ex.mp3`。**兩個音檔都要有**；缺檔的話，`stamp_sw.py` 會報錯並停止，部署也會失敗，不會把不完整的版本推上線。
 3. 執行 `python tools/stamp_sw.py`，然後 commit。
 
 ### 其他腳本
