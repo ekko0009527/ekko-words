@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EKKO 英文字卡</title>
+<meta name="description" content="每天幾個英文單字的間隔複習字卡，可安裝、可離線使用。">
+<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1013" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EKKO 字卡">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Noto+Sans:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/app.js" defer></script>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div class="streak off" id="streak" aria-label="連續學習天數">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.6 2.5c.6 3.3 4.9 5.4 4.9 10.4a5.5 5.5 0 0 1-11 0c0-2.3 1.1-4 2.3-5.1-.1 2.1.9 3.4 2.1 3.6-.4-3.3.6-6.3 1.7-8.9z"/></svg>
+      <span id="streakNum">0</span>
+    </div>
+    <div class="pills">
+      <div class="pill known" title="標記為已經會的字">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg></span>
+        <span id="knownNum">0</span>
+      </div>
+      <div class="pill today" title="今天完成 / 今天份量">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.3 4.3L19 7.2"/></svg></span>
+        <span><b id="doneNum">0</b> <span class="sep">/</span> <span id="totalNum">0</span></span>
+      </div>
+    </div>
+    <button class="icon-btn" id="menuBtn" aria-label="設定">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
+  </header>
+
+  <main class="stage" id="stage"></main>
+
+  <footer>
+    <div class="actions" id="actions"></div>
+    <div class="keys" id="keys">鍵盤：空白鍵顯示答案，← 左邊按鈕，→ 右邊按鈕</div>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" hidden aria-label="設定">
+  <div class="grab"></div>
+  <h3>設定</h3>
+  <div class="stats" id="sheetStats"></div>
+  <div class="field">
+    <span class="lab">每天新字數</span>
+    <div class="seg" id="segPerDay"></div>
+  </div>
+  <div class="field">
+    <span class="lab">牌組</span>
+    <div class="seg" id="segDeck"></div>
+  </div>
+  <div class="field">
+    <span class="lab">換卡時自動念單字</span>
+    <div class="seg" id="segAuto"></div>
+  </div>
+  <div class="sync" id="sync"><i></i><span>進度存在這台裝置的瀏覽器，清除瀏覽器資料會一起清掉。換裝置或重灌前，請先「匯出進度」。</span></div>
+  <div class="field">
+    <span class="lab">進度備份</span>
+    <div id="backup"></div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
+  <div class="danger" id="danger"></div>
+  <button class="btn small" id="closeSheet">完成</button>
+</section>
+
+<div class="toast" id="toast" role="status" hidden><span>有新版本</span><button type="button" id="toastBtn">更新</button></div>
+</body>
+</html>
