@@ -91,12 +91,13 @@ GitHub Actions 部署時也會自動跑一次，所以就算忘了也不會部�
 ### 新增單字
 
 1. 在 `words.json` 加一筆資料，`deck` 只能填 `core`、`dev` 或 `algo`。
-2. 放入 `audio/<id>.mp3` 和 `audio/<id>-ex.mp3`。**兩個音檔都要有**；缺檔的話，`stamp_sw.py` 會報錯並停止，部署也會失敗，不會把不完整的版本推上線。
+2. 放入 `audio/<id>.mp3` 和 `audio/<id>-ex.mp3`。單字錄音可以用 `python tools/make_word_audio.py <id>` 產生（需要 `pip install edge-tts==7.3.1`，會把單字送到微軟線上語音服務，預設聲音是 en-US-AvaNeural）。**兩個音檔都要有**；缺檔的話，`stamp_sw.py` 會報錯並停止，部署也會失敗，不會把不完整的版本推上線。
 3. 執行 `python tools/stamp_sw.py`，然後 commit。
 
 ### 其他腳本
 
 - `tools/split_html.py`：把原本的單檔 `ekko-words.html` 拆成 `words.json` 和 `audio/`。只處理資料，HTML、CSS、JS 不會動。
+- `tools/make_word_audio.py`：用 edge-tts 重新產生單字錄音 `audio/<id>.mp3`，不會動到例句錄音。原始的單字錄音有大約一半開頭被切掉，2026-10-21 已全部換成這支腳本產生的版本。
 - `tools/make_icons.py`：重新產生 `icons/`，需要 Pillow。
 
 ## 已知限制
