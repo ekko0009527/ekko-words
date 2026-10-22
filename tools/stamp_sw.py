@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-FILES = ["index.html", "css/style.css", "js/app.js", "words.json", "manifest.webmanifest"]
+FILES = ["index.html", "css/style.css", "js/vendor/ts-fsrs.umd.js", "js/app.js", "words.json", "manifest.webmanifest"]
 DIRS = ["icons"]
 HASH_LEN = 12
 

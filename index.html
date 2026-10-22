@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Noto+Sans:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<script src="js/vendor/ts-fsrs.umd.js" defer></script>
 <script src="js/app.js" defer></script>
 </head>
 <body>
@@ -32,7 +33,7 @@
       </div>
     </div>
     <div class="pills">
-      <div class="pill known" title="標記為已經會的字">
+      <div class="pill known" title="已熟練：約 3 週以上才需要複習的字">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg></span>
         <span id="knownNum">0</span>
       </div>
@@ -50,7 +51,7 @@
 
   <footer>
     <div class="actions" id="actions"></div>
-    <div class="keys" id="keys">鍵盤：空白鍵顯示答案，← 左邊按鈕，→ 右邊按鈕</div>
+    <div class="keys" id="keys">鍵盤：空白鍵顯示答案；1／← 忘了、2 想了一下、3／→ 秒答（2 鍵模式：1／← 不記得、2／→ 記得）</div>
   </footer>
 </div>
 
@@ -70,6 +71,14 @@
   <div class="field">
     <span class="lab">換卡時自動念單字</span>
     <div class="seg" id="segAuto"></div>
+  </div>
+  <div class="field">
+    <span class="lab">評分按鈕</span>
+    <div class="seg" id="segButtons"></div>
+  </div>
+  <div class="field">
+    <span class="lab">目標記憶率（越高複習越頻繁）</span>
+    <div class="seg" id="segRetention"></div>
   </div>
   <div class="sync" id="sync"><i></i><span>進度存在這台裝置的瀏覽器，清除瀏覽器資料會一起清掉。換裝置或重灌前，請先「匯出進度」。</span></div>
   <div class="field">

@@ -186,3 +186,9 @@ svg{display:block}
 .bar i{display:block;height:100%;border-radius:99px;background:var(--good);transition:width .3s}
 .prog-row{display:flex;justify-content:space-between;font:500 13px var(--f-body);color:var(--muted)}
 .today-note{margin:2px 0 0;padding-top:10px;border-top:1px solid var(--line);font:500 14px var(--f-body);text-align:center}
+
+/* 3 grading buttons (FSRS Again / Hard / Good) */
+.actions.three{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.actions.three .btn{font-size:17px;letter-spacing:.02em;padding:0 4px}
+.grade-hint{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:-4px;
+  text-align:center;font:500 12px/1.4 var(--f-body);color:var(--muted)}

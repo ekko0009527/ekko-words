@@ -14,14 +14,20 @@ function initCards(list){
   }
   ORDER_ALL = out;
 }
-const IV = [0, 1, 2, 4, 7, 15, 30, 60]; // days until next review, by box
-const LS_KEY = "ekko-words-v1";
+const LS_KEY = "ekko-words-v1";            // key kept across format versions; state.v tells the format
+const LS_PRE_FSRS = "ekko-words-v1-pre-fsrs"; // untouched copy of v1 progress, written once before migrating
+const DAY = 864e5;
+const MASTERED_DAYS = 21;                    // stability at which a word counts as "已熟練"
+const DOT_DAYS = [1, 2, 4, 7, 15, 30, 60];   // stability thresholds for the 熟練度 dots on a card
 
 /* ---------- state ---------- */
-function todayNum(){ const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 864e5); }
+/* Day numbers count local calendar days; a card is due on the local day its `due` timestamp falls in. */
+const dayOf = ms => { const d = new Date(ms); return Math.floor((ms - d.getTimezoneOffset() * 60000) / DAY); };
+function todayNum(){ return dayOf(Date.now()); }
+function dayStart(n){ const u = new Date(n * DAY); return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()).getTime(); }
 function defaultState(){
-  return {v:1, cards:{}, day:{d:0, nw:0, extra:0, done:[]}, streak:0, lastDone:-9, updatedAt:0, log:{},
-    settings:{perDay:15, deck:"all", accent:"en-US", auto:true}};
+  return {v:2, cards:{}, day:{d:0, nw:0, extra:0, done:[]}, streak:0, lastDone:-9, updatedAt:0, log:{},
+    settings:{perDay:15, deck:"all", accent:"en-US", auto:true, buttons:3, retention:0.9}};
 }
 function normalize(s){
   const d = defaultState();
@@ -31,17 +37,60 @@ function normalize(s){
 }
 let state = defaultState();
 
+/* v1 (fixed-interval boxes) -> v2 (FSRS cards). Also used for v1 backup files.
+   learn {box, due, n, l}: keep the due day, stability = that box's interval.
+   known {t}: never tested, so it comes back for a check, spread over the next 28 days. */
+const IV_V1 = [0, 1, 2, 4, 7, 15, 30, 60];
+function migrateV1(s){
+  const t = todayNum(), cards = {};
+  for (const [id, c] of Object.entries(isObj(s.cards) ? s.cards : {})){
+    if (!isObj(c)) continue;
+    if (c.s === "learn" && isInt(c.box) && c.box >= 0 && c.box < IV_V1.length && isInt(c.due)){
+      const iv = IV_V1[c.box];
+      cards[id] = {due: dayStart(c.due), stability: Math.max(1, iv), difficulty: Math.min(10, Math.max(1, 5 + 0.5 * (c.l || 0))),
+        scheduled_days: iv, learning_steps: 0, reps: c.n || 0, lapses: c.l || 0, state: 2, last_review: dayStart(c.due - iv)};
+    } else if (c.s === "known"){
+      const due = dayStart(t + 1 + hash(id) % 28);
+      cards[id] = {due, stability: 30, difficulty: 4, scheduled_days: 30, learning_steps: 0, reps: 1, lapses: 0, state: 2,
+        last_review: due - 30 * DAY, chk: true};
+    }
+  }
+  const out = normalize({...s, cards, v: 2});
+  out.settings = {...defaultState().settings, ...(isObj(s.settings) ? s.settings : {}), buttons: 3, retention: 0.9};
+  return out;
+}
+
 const Store = {
-  loadLocal(){ try { const raw = localStorage.getItem(LS_KEY); if (raw) return normalize(JSON.parse(raw)); } catch(e){} return null; },
+  loadLocal(){
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (isObj(s) && !(s.v >= 2)){
+        if (!localStorage.getItem(LS_PRE_FSRS)) localStorage.setItem(LS_PRE_FSRS, raw);
+        const up = migrateV1(s);
+        localStorage.setItem(LS_KEY, JSON.stringify(up));
+        return up;
+      }
+      return normalize(s);
+    } catch(e){}
+    return null;
+  },
   saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){} },
   save(){ state.updatedAt = Date.now(); this.saveLocal(); }
 };
 
 /* ---------- backup: export / import progress as JSON ---------- */
-const BACKUP_APP = "ekko-words", BACKUP_V = 1;
-const PER_DAY = [5, 10, 15, 20], DECKS = ["all", "core", "dev", "algo"];
+const BACKUP_APP = "ekko-words", BACKUP_V = 2;
+const PER_DAY = [5, 10, 15, 20], DECKS = ["all", "core", "dev", "algo"], BUTTONS = [2, 3], RETENTION = [0.85, 0.9, 0.95];
 const isObj = x => !!x && typeof x === "object" && !Array.isArray(x);
 const isInt = x => Number.isInteger(x);
+const isNum = x => typeof x === "number" && Number.isFinite(x);
+function validCard(c){
+  return isObj(c) && isNum(c.due) && isNum(c.stability) && c.stability >= 0 && isNum(c.difficulty) && c.difficulty >= 0 && c.difficulty <= 10
+    && isInt(c.state) && c.state >= 0 && c.state <= 3 && isInt(c.reps) && c.reps >= 0 && isInt(c.lapses) && c.lapses >= 0
+    && (c.last_review === undefined || isNum(c.last_review)) && (c.chk === undefined || typeof c.chk === "boolean");
+}
 
 function exportProgress(){
   const now = new Date(), pad = n => String(n).padStart(2, "0");
@@ -61,21 +110,19 @@ function parseBackup(text){
   if (!isObj(data) || data.app !== BACKUP_APP) throw new Error("這不是 EKKO 字卡的進度檔。");
   if (!isInt(data.v) || data.v > BACKUP_V) throw new Error("進度檔版本比這個 App 新，請先更新 App。");
   if (!isObj(data.state) || !isObj(data.state.cards)) throw new Error("進度檔缺少學習紀錄。");
-  const s = normalize(data.state), d = defaultState();
+  const total = Object.keys(data.state.cards).length;
+  const s = data.v < 2 ? migrateV1(data.state) : normalize(data.state), d = defaultState();
   const cards = {};
-  let dropped = 0;
-  for (const [id, c] of Object.entries(s.cards)){
-    const ok = BY_ID[id] && isObj(c) && (
-      (c.s === "known" && isInt(c.t)) ||
-      (c.s === "learn" && isInt(c.box) && c.box >= 0 && c.box < IV.length && isInt(c.due)));
-    if (ok) cards[id] = c; else dropped++;
-  }
+  for (const [id, c] of Object.entries(s.cards)) if (BY_ID[id] && validCard(c)) cards[id] = c;
+  const dropped = total - Object.keys(cards).length;
   s.cards = cards;
   const S = s.settings;
   if (!PER_DAY.includes(S.perDay)) S.perDay = d.settings.perDay;
   if (!DECKS.includes(S.deck)) S.deck = d.settings.deck;
   if (typeof S.auto !== "boolean") S.auto = d.settings.auto;
   if (typeof S.accent !== "string") S.accent = d.settings.accent;
+  if (!BUTTONS.includes(S.buttons)) S.buttons = d.settings.buttons;
+  if (!RETENTION.includes(S.retention)) S.retention = d.settings.retention;
   const D = s.day;
   if (!isInt(D.d) || !isInt(D.nw) || !isInt(D.extra) || !Array.isArray(D.done)) s.day = d.day;
   else D.done = D.done.filter(id => typeof id === "string" && BY_ID[id]);
@@ -98,8 +145,8 @@ function newLeft(){ return deckList().filter(c => !state.cards[c.id]).length; }
 function startSession(){
   rollDay();
   const t = state.day.d, list = deckList(), done = new Set(state.day.done);
-  const rev = list.filter(c => { const s = state.cards[c.id]; return s && s.s === "learn" && s.due <= t && !done.has(c.id); })
-    .sort((a, b) => state.cards[a.id].due - state.cards[b.id].due || state.cards[a.id].box - state.cards[b.id].box);
+  const rev = list.filter(c => { const s = state.cards[c.id]; return s && dayOf(s.due) <= t && !done.has(c.id); })
+    .sort((a, b) => state.cards[a.id].due - state.cards[b.id].due);
   const allow = Math.max(0, state.settings.perDay + state.day.extra - state.day.nw);
   const fresh = list.filter(c => !state.cards[c.id]).slice(0, allow);
   queue = [];
@@ -119,7 +166,8 @@ function next(){
   if (cur && view === "study" && state.settings.auto && interacted) sayWord(BY_ID[cur.id]);
 }
 
-function reinsert(id, gap){ queue.splice(Math.min(gap, queue.length), 0, {id, kind:"review"}); }
+/* kind "review" is graded by FSRS; "practice" is the same-day retry after 忘了 and does not change the schedule */
+function reinsert(id, gap, kind = "review"){ queue.splice(Math.min(gap, queue.length), 0, {id, kind}); }
 /* state.log[dayNum] = cards finished that day (feeds the week strip on the home screen) */
 function markDone(id){
   if (!state.day.done.includes(id)) state.day.done.push(id);
@@ -135,13 +183,36 @@ function finishDay(){
   }
 }
 
+/* ---------- scheduling: FSRS (js/vendor/ts-fsrs.umd.js, global FSRS) ---------- */
+let scheduler = null;
+function makeScheduler(){
+  scheduler = FSRS.fsrs(FSRS.generatorParameters({request_retention: state.settings.retention,
+    enable_fuzz: true, enable_short_term: false, maximum_interval: 3650}));
+}
+/* Stored cards keep dates as millisecond numbers; ts-fsrs accepts those and returns Dates. */
+function schedule(id, rating, now = Date.now()){
+  const old = state.cards[id], base = old ? {...old, elapsed_days: 0} : FSRS.createEmptyCard(now);
+  const c = scheduler.next(base, now, rating).card;
+  state.cards[id] = {due: +c.due, stability: c.stability, difficulty: c.difficulty, scheduled_days: c.scheduled_days,
+    learning_steps: c.learning_steps, reps: c.reps, lapses: c.lapses, state: c.state, last_review: c.last_review ? +c.last_review : undefined};
+}
+
+/* kind: know / learn (new word), again / hard / good (graded review), "practice-*" (same-day retry) */
 function act(kind){
   if (!cur) return;
-  const id = cur.id, t = state.day.d, c = state.cards[id];
-  if (kind === "know"){ state.cards[id] = {s:"known", t}; state.day.nw++; markDone(id); }
-  else if (kind === "learn"){ state.cards[id] = {s:"learn", box:0, due:t, n:0, l:0}; state.day.nw++; reinsert(id, 4); }
-  else if (kind === "pass" && c){ c.box = Math.min((c.box || 0) + 1, IV.length - 1); c.due = t + IV[c.box]; c.n = (c.n || 0) + 1; markDone(id); }
-  else if (kind === "fail" && c){ c.box = 0; c.l = (c.l || 0) + 1; c.due = t; reinsert(id, 3); }
+  const id = cur.id, R = FSRS.Rating;
+  if (cur.kind === "practice"){
+    if (kind === "again") reinsert(id, 3, "practice"); else markDone(id);
+  } else if (kind === "know"){
+    schedule(id, R.Easy); state.day.nw++; markDone(id);          // first rating: Easy -> checked again in about a week
+  } else if (kind === "learn"){
+    const c = FSRS.createEmptyCard(Date.now());                  // not graded yet: the first real answer comes later today
+    state.cards[id] = {due: +c.due, stability: 0, difficulty: 0, scheduled_days: 0, learning_steps: 0, reps: 0, lapses: 0, state: 0};
+    state.day.nw++; reinsert(id, 4);
+  } else if (state.cards[id]){
+    schedule(id, kind === "again" ? R.Again : kind === "hard" ? R.Hard : R.Good);
+    if (kind === "again") reinsert(id, 3, "practice"); else markDone(id);
+  }
   Store.save();
   next();
 }
@@ -250,15 +321,16 @@ function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.c
 function button(cls, label, fn){ const b = el("button", cls, label); b.type = "button"; b.addEventListener("click", fn); return b; }
 function speakBtn(fn, dark, label){ const b = el("button", "spk" + (dark ? " dark" : "")); b.type = "button"; b.innerHTML = ICON.wave; b.setAttribute("aria-label", label); b.addEventListener("click", e => { e.stopPropagation(); fn(); }); return b; }
 
+/* learning: seen, stability < 21 days; mastered: >= 21 days; pending: old "本來就會" words not yet re-tested */
 function counts(){
-  let learning = 0, mastered = 0, known = 0;
-  for (const k in state.cards){ const c = state.cards[k]; if (c.s === "known") known++; else if (c.s === "learn"){ if (c.box >= 5) mastered++; else learning++; } }
-  return {learning, mastered, known, unseen: CARDS.length - learning - mastered - known};
+  let learning = 0, mastered = 0, pending = 0;
+  for (const k in state.cards){ const c = state.cards[k]; if (c.chk) pending++; else if (c.stability >= MASTERED_DAYS) mastered++; else learning++; }
+  return {learning, mastered, pending, unseen: CARDS.length - learning - mastered - pending};
 }
 
 function renderTop(){
   const c = counts(), t = state.day.d;
-  $("knownNum").textContent = c.known;
+  $("knownNum").textContent = c.mastered;
   const ids = new Set(state.day.done);
   if (cur) ids.add(cur.id);
   queue.forEach(q => ids.add(q.id));
@@ -290,7 +362,7 @@ function renderCard(animate){
   const wrap = el("article", "card" + (animate ? " enter" : ""));
   const art = el("div", "art");
   const cv = el("canvas"); cv.setAttribute("aria-hidden", "true"); cv.dataset.id = card.id;
-  art.append(cv, el("span", "tag", cur.kind === "new" ? "新字" : "複習"));
+  art.append(cv, el("span", "tag", cur.kind === "new" ? "新字" : cur.kind === "practice" ? "再練一次" : s && s.chk ? "確認一下" : "複習"));
   /* Memory cue: shown only with the answer, so review cards still test recall */
   if (revealed && card.emoji){ const e = el("span", "emo", card.emoji); e.setAttribute("aria-hidden", "true"); art.append(e); }
   wrap.append(art);
@@ -315,10 +387,10 @@ function renderCard(animate){
 
   const meta = el("div", "meta");
   meta.append(el("span", null, DECK_NAME[card.deck]));
-  if (s && s.s === "learn"){
+  if (s && s.reps > 0 && !s.chk){
     meta.append(el("span", null, "·"), el("span", null, "熟練度"));
     const dots = el("span", "dots");
-    for (let i = 1; i < IV.length; i++){ const d = el("i"); if (i <= s.box) d.className = "on"; dots.append(d); }
+    DOT_DAYS.forEach(n => { const d = el("i"); if (s.stability >= n) d.className = "on"; dots.append(d); });
     meta.append(dots);
   }
   body.append(meta);
@@ -351,7 +423,7 @@ function renderDone(){
     d.append(el("h2", null, "現在沒有要複習的字"), el("p", null, "今天的新字額度用完了，或是還沒開始。要的話可以多學幾個。"));
   }
   const st = el("div", "stats");
-  [[c.learning, "學習中"], [c.mastered, "已熟練"], [c.known, "本來就會"], [c.unseen, "還沒看過"]].forEach(([v, l]) => {
+  [[c.learning, "學習中"], [c.mastered, "已熟練"], [c.pending, "待確認"], [c.unseen, "還沒看過"]].forEach(([v, l]) => {
     const s = el("div", "stat"); s.append(el("b", null, String(v)), el("span", null, l)); st.append(s);
   });
   d.append(st);
@@ -472,6 +544,7 @@ function goHome(){
 function renderActions(){
   const a = $("actions");
   a.replaceChildren();
+  a.classList.remove("three");
   if (view === "home"){
     const T = today(), left = newLeft();
     if (T.remaining.length) a.append(button("btn strong wide", T.done.length ? "繼續" : "立即開始", startStudy));
@@ -490,8 +563,14 @@ function renderActions(){
     a.append(button("btn", "我知道了", () => act("know")), button("btn strong", "我要學習", () => act("learn")));
   } else if (!revealed){
     a.append(button("btn strong wide", "顯示答案", reveal));
+  } else if (cur.kind === "practice" || state.settings.buttons === 2){
+    const [no, yes] = cur.kind === "practice" ? ["還是忘了", "想起來了"] : ["不記得", "記得"];
+    a.append(button("btn", no, () => act("again")), button("btn strong", yes, () => act("good")));
   } else {
-    a.append(button("btn", "不記得", () => act("fail")), button("btn strong", "記得", () => act("pass")));
+    a.classList.add("three");
+    a.append(button("btn", "忘了", () => act("again")), button("btn", "想了一下", () => act("hard")),
+      button("btn strong", "秒答", () => act("good")),
+      (() => { const h = el("div", "grade-hint"); ["想不起來", "慢慢想到", "馬上想到"].forEach(x => h.append(el("span", null, x))); return h; })());
   }
 }
 
@@ -526,7 +605,7 @@ function renderBackup(){
     box.append(el("p", null, text),
       button("btn small", "取消", () => { pendingImport = null; renderSheet(); }),
       button("btn small strong", "確定匯入", () => {
-        state = pendingImport.state; pendingImport = null; backupMsg = "已匯入進度。";
+        state = pendingImport.state; pendingImport = null; backupMsg = "已匯入進度。"; makeScheduler();
         Store.save(); startSession(); renderSheet();
       }));
     bx.append(box);
@@ -550,13 +629,16 @@ async function onImportFile(e){
 function renderSheet(){
   const c = counts(), st = $("sheetStats");
   st.replaceChildren();
-  [[c.learning, "學習中"], [c.mastered, "已熟練"], [c.known, "本來就會"], [state.lastDone >= state.day.d - 1 ? state.streak : 0, "連續天數"]].forEach(([v, l]) => {
+  [[c.learning, "學習中"], [c.mastered, "已熟練"], [c.pending, "待確認"], [state.lastDone >= state.day.d - 1 ? state.streak : 0, "連續天數"]].forEach(([v, l]) => {
     const s = el("div", "stat"); s.append(el("b", null, String(v)), el("span", null, l)); st.append(s);
   });
   const S = state.settings;
   seg($("segPerDay"), [[5,"5"],[10,"10"],[15,"15"],[20,"20"]], S.perDay, v => { S.perDay = v; Store.save(); startSession(); });
   seg($("segDeck"), [["all","全部"],["core","生活"],["dev","程式"],["algo","演算法"]], S.deck, v => { S.deck = v; Store.save(); startSession(); });
   seg($("segAuto"), [[true,"開"],[false,"關"]], S.auto, v => { S.auto = v; Store.save(); });
+  seg($("segButtons"), [[3,"3 鍵"],[2,"2 鍵"]], S.buttons, v => { S.buttons = v; Store.save(); render(false); });
+  /* Takes effect from each word's next review; existing due dates are kept */
+  seg($("segRetention"), [[0.85,"85%"],[0.9,"90%"],[0.95,"95%"]], S.retention, v => { S.retention = v; makeScheduler(); Store.save(); });
   const dz = $("danger");
   dz.replaceChildren();
   if (!confirmReset){
@@ -592,9 +674,12 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape"){ goHome(); return; }
   if (!cur) return;
   if (e.target && e.target.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
-  if (e.key === " " || e.key === "Enter"){ e.preventDefault(); if (cur.kind === "review" && !revealed) reveal(); }
-  else if (e.key === "ArrowLeft" || e.key === "1"){ if (cur.kind === "new") act("know"); else if (revealed) act("fail"); }
-  else if (e.key === "ArrowRight" || e.key === "2"){ if (cur.kind === "new") act("learn"); else if (revealed) act("pass"); }
+  /* new word: 1/← 我知道了, 2/→ 我要學習. Answer shown: 1/← lowest grade, → highest; with 3 buttons 2 = 想了一下, 3 = 秒答 */
+  const three = cur.kind === "review" && state.settings.buttons === 3;
+  if (e.key === " " || e.key === "Enter"){ e.preventDefault(); if (cur.kind !== "new" && !revealed) reveal(); }
+  else if (e.key === "ArrowLeft" || e.key === "1"){ if (cur.kind === "new") act("know"); else if (revealed) act("again"); }
+  else if (e.key === "2"){ if (cur.kind === "new") act("learn"); else if (revealed) act(three ? "hard" : "good"); }
+  else if (e.key === "ArrowRight" || (e.key === "3" && three)){ if (cur.kind === "new") act("learn"); else if (revealed) act("good"); }
   else if (e.key.toLowerCase() === "s"){ sayWord(BY_ID[cur.id]); }
 });
 let rz = 0;
@@ -626,6 +711,7 @@ function registerSW(){
 /* ---------- boot ---------- */
 async function boot(){
   try {
+    if (!window.FSRS) throw new Error("ts-fsrs not loaded");
     const r = await fetch("words.json");
     if (!r.ok) throw new Error(r.status);
     initCards(await r.json());
@@ -638,6 +724,7 @@ async function boot(){
     return;
   }
   state = Store.loadLocal() || defaultState();
+  makeScheduler();
   startSession();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawArt);
 }
