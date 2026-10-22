@@ -116,3 +116,17 @@ GitHub Actions 部署時也會自動跑一次，所以就算忘了也不會部�
 - 正在學的字：保留原本的到期日，並依原本的等級換算記憶穩定度。
 - 以前標成「本來就會」的字：會在接下來 4 週內，分散回來再考一次（卡片上顯示「確認一下」）。
 - 轉換前，原始資料會另存在瀏覽器的 `ekko-words-v1-pre-fsrs`，萬一需要可以還原。
+
+## 版本號與發版流程
+
+版本號遵循語意化版本（SemVer）：學習進度格式不相容或排程大改升**主版號**，新功能升**次版號**，修正升**修訂號**。版本資訊只寫在 `CHANGELOG.md` 一個地方，其他都由它產生：
+
+- `changelog.json`：給 App 用。設定最下面的「版本／更新內容」，以及換版後的提示，都讀這個檔，離線也能看。
+- GitHub Releases：`.github/workflows/release.yml` 每次推到 `main` 時執行，會替「已經有 tag、但還沒有 Release」的版本，用 CHANGELOG 對應的段落建立 Release。
+
+發一個新版的步驟：
+
+1. 在 `CHANGELOG.md` 最上面加一段 `## [X.Y.Z] - YYYY-MM-DD`，下面用 `- ` 條列改了什麼。第一條冒號（：）前面的短句會出現在換版提示裡，請寫最重要的改變，並用「短標題：說明」的寫法。
+2. 執行 `python tools/stamp_sw.py`。它會先檢查 CHANGELOG 的格式（版本號必須遞增、每版都要有日期和內容），產生 `changelog.json`，再更新快取版本。
+3. Commit，並打上同名的 tag：`git tag -a vX.Y.Z -m "vX.Y.Z"`
+4. `git push origin main --follow-tags`

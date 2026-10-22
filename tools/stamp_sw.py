@@ -11,14 +11,22 @@
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
-FILES = ["index.html", "css/style.css", "js/vendor/ts-fsrs.umd.js", "js/app.js", "words.json", "manifest.webmanifest"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import build_changelog  # noqa: E402
+
+FILES = ["index.html", "css/style.css", "js/vendor/ts-fsrs.umd.js", "js/app.js", "words.json", "changelog.json", "manifest.webmanifest"]
 DIRS = ["icons"]
 HASH_LEN = 12
 
 
 def main():
+    try:
+        build_changelog.build()  # CHANGELOG.md -> changelog.json; stops on a malformed changelog
+    except ValueError as e:
+        raise SystemExit(f"CHANGELOG error: {e}")
     h = hashlib.sha256()
     paths = [Path(f) for f in FILES]
     for d in DIRS:

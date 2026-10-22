@@ -1,0 +1,41 @@
+name: Sync GitHub Releases
+
+# For every version in CHANGELOG.md whose tag (vX.Y.Z) exists but has no GitHub Release yet,
+# create the release with that version's notes. Runs on each push to main, so tags pushed
+# together with the commit (git push --follow-tags) get their release; safe to re-run.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  releases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create missing releases from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # oldest first, so the newest release is created last and becomes "Latest"
+          for v in $(python3 tools/build_changelog.py --versions | tac); do
+            tag="v$v"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "skip $tag: tag not pushed yet"
+              continue
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "skip $tag: release already exists"
+              continue
+            fi
+            python3 tools/build_changelog.py --notes "$v" > notes.md
+            gh release create "$tag" --title "$tag" --notes-file notes.md --verify-tag
+            echo "created $tag"
+          done

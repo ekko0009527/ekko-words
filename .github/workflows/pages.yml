@@ -29,7 +29,7 @@ jobs:
       - name: Assemble site (only files the app serves)
         run: |
           mkdir _site
-          cp -r index.html sw.js manifest.webmanifest words.json css js icons audio _site/
+          cp -r index.html sw.js manifest.webmanifest words.json changelog.json css js icons audio _site/
 
       - uses: actions/configure-pages@v6
 

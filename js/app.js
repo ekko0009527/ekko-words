@@ -651,8 +651,56 @@ function renderSheet(){
     dz.append(box);
   }
   renderBackup();
+  renderAbout();
 }
-function openSheet(){ confirmReset = false; pendingImport = null; backupMsg = ""; renderSheet(); $("scrim").hidden = false; $("sheet").hidden = false; }
+
+/* ---------- version + release notes: changelog.json is generated from CHANGELOG.md ---------- */
+const LS_SEEN = "ekko-words-seen-version";
+let CHANGES = [], showChanges = false;
+async function loadChangelog(){
+  try { const r = await fetch("changelog.json"); if (r.ok) CHANGES = await r.json(); } catch(e){}
+  const latest = CHANGES[0];
+  if (!latest) return;
+  let seen = null;
+  try { seen = localStorage.getItem(LS_SEEN); localStorage.setItem(LS_SEEN, latest.version); } catch(e){}
+  /* First install has no record: remember the version silently */
+  /* Headline = first item up to its first colon (CHANGELOG.md convention), kept short for the banner */
+  const head = latest.items[0].split(/[：:]/)[0].slice(0, 24);
+  if (seen && seen !== latest.version) showNotice(`已更新到 ${latest.version}：${head}`);
+}
+function showNotice(text){
+  const n = $("notice");
+  $("noticeText").textContent = text;
+  n.hidden = false;
+  clearTimeout(n._timer);
+  n._timer = setTimeout(() => { n.hidden = true; }, 6000);
+}
+function renderAbout(){
+  const box = $("about");
+  box.replaceChildren();
+  if (!CHANGES.length) return;
+  const row = el("div", "about-row");
+  row.append(el("span", null, "版本 " + CHANGES[0].version),
+    button("link-btn", showChanges ? "收起" : "更新內容", () => { showChanges = !showChanges; renderAbout(); }));
+  box.append(row);
+  if (!showChanges) return;
+  const list = el("div", "changes");
+  CHANGES.slice(0, 5).forEach(e => {
+    const sec = el("section"), ul = el("ul");
+    sec.append(el("h4", null, `${e.version}　${e.date}`));
+    e.items.forEach(i => ul.append(el("li", null, i)));
+    sec.append(ul);
+    list.append(sec);
+  });
+  box.append(list);
+}
+$("noticeBtn").addEventListener("click", () => {
+  $("notice").hidden = true;
+  openSheet(); showChanges = true; renderAbout();
+  $("about").scrollIntoView({block: "start"});
+});
+
+function openSheet(){ confirmReset = false; pendingImport = null; backupMsg = ""; showChanges = false; renderSheet(); $("scrim").hidden = false; $("sheet").hidden = false; }
 function closeSheet(){ $("scrim").hidden = true; $("sheet").hidden = true; }
 $("menuBtn").addEventListener("click", openSheet);
 $("closeSheet").addEventListener("click", closeSheet);
@@ -726,6 +774,7 @@ async function boot(){
   state = Store.loadLocal() || defaultState();
   makeScheduler();
   startSession();
+  loadChangelog();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawArt);
 }
 boot();
